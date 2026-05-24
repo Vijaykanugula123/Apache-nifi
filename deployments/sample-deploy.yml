@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nifi-test
+  namespace: dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nifi-test
+  template:
+    metadata:
+      labels:
+        app: nifi-test
+    spec:
+      volumes:
+        - name: nifi-conf-volume
+          persistentVolumeClaim:
+            claimName: nifi-blob-conf-pvc
+      containers:
+        - name: nifi-test
+          image: clientcinacrall.azurecr.io/nifi-test-dev:latest
+          ports:
+            - containerPort: 8443
+          # env:
+          #   - name: NIFI_WEB_PROXY_HOST
+          #     value: "ih-nifi-qa.3sc.ai"
+          #   - name: NIFI_WEB_HTTPS_HOST
+          #     value: "0.0.0.0"
+          volumeMounts:
+            - name: nifi-conf-volume
+              mountPath: /opt/nifi/nifi-current/conf
+          
+---  
+apiVersion: v1
+kind: Service
+metadata:
+  name: nifi-svc-test
+  namespace: dev
+spec:
+  selector:
+    app: nifi-test
+  ports:
+    - name: https
+      port: 8443
+      targetPort: 8443
+      protocol: TCP
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nifi-blob-conf-pvc
+spec:
+  accessModes:
+    - ReadWriteMany # or ReadWriteOnce, ReadOnlyMany
+  storageClassName: zookeeper-azure-blob-storage-retain
+  resources:
+    requests:
+      storage: 1Gi
