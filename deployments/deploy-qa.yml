@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nifi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nifi
+  minReadySeconds: 100
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: nifi
+    spec:
+      nodeSelector:
+        node-type: qa
+      volumes:
+        - name: nifi-conf-volume
+          persistentVolumeClaim:
+            claimName: nifi-blob-conf-pvc
+        # - name: nifi-startup-script
+        #   configMap:
+        #     name: nifi-startup-script
+        #     defaultMode: 0755
+      initContainers:
+      - name: init-copy-default-conf
+        image: clientcinacrall.azurecr.io/apache-nifi-qa:latest
+        command:
+          - bash
+          - -c
+          - |
+            echo "[INIT] Checking if conf PVC is empty..."
+            if [ -z "$(ls -A /mnt/conf 2>/dev/null)" ]; then
+              echo "[INIT] PVC is empty. Seeding with image's default conf..."
+              cp -r /opt/nifi/nifi-current/conf/* /mnt/conf/
+            else
+              echo "[INIT] PVC already has config."
+            fi
+        volumeMounts:
+          - name: nifi-conf-volume
+            mountPath: /mnt/conf
+      containers:
+        - name: nifi
+          image: clientcinacrall.azurecr.io/apache-nifi-qa:$(Build.BuildId)
+          # command:
+          #   - /opt/startup/start.sh
+          ports:
+            - containerPort: 8443
+              name: https
+          volumeMounts:
+            - name: nifi-conf-volume
+              mountPath: /opt/nifi/nifi-current/conf
+            # - name: nifi-startup-script
+            #   mountPath: /opt/startup
+          envFrom:
+            - secretRef:
+                name: nifi-secrets
+
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nifi-blob-conf-pvc
+spec:
+  accessModes:
+    - ReadWriteMany # or ReadWriteOnce, ReadOnlyMany
+  storageClassName: zookeeper-azure-blob-storage-retain
+  resources:
+    requests:
+      storage: 1Gi
